@@ -16,8 +16,9 @@ import com.quizmaster.app.ui.quiz.QuizScreen
 import com.quizmaster.app.ui.set.SetDetailScreen
 import com.quizmaster.app.ui.wrong.WrongBookScreen
 
-private fun quizRoute(mode: QuizMode, setId: Long, shuffle: Boolean) =
-    "quiz?mode=${mode.name}&setId=$setId&shuffle=$shuffle"
+/** limit = 每批題數，0 代表不限 */
+private fun quizRoute(mode: QuizMode, setId: Long, shuffle: Boolean, limit: Int) =
+    "quiz?mode=${mode.name}&setId=$setId&shuffle=$shuffle&limit=$limit"
 
 @Composable
 fun AppNavigation() {
@@ -43,7 +44,7 @@ fun AppNavigation() {
                 onBack = { nav.popBackStack() },
                 onEditQuestion = { qid -> nav.navigate("edit/$setId/$qid") },
                 onImport = { nav.navigate("import/$setId") },
-                onStartQuiz = { mode, shuffle -> nav.navigate(quizRoute(mode, setId, shuffle)) },
+                onStartQuiz = { mode, shuffle, limit -> nav.navigate(quizRoute(mode, setId, shuffle, limit)) },
             )
         }
 
@@ -72,11 +73,12 @@ fun AppNavigation() {
         }
 
         composable(
-            "quiz?mode={mode}&setId={setId}&shuffle={shuffle}",
+            "quiz?mode={mode}&setId={setId}&shuffle={shuffle}&limit={limit}",
             arguments = listOf(
                 navArgument("mode") { type = NavType.StringType; defaultValue = QuizMode.ALL.name },
                 navArgument("setId") { type = NavType.LongType; defaultValue = -1L },
                 navArgument("shuffle") { type = NavType.BoolType; defaultValue = true },
+                navArgument("limit") { type = NavType.IntType; defaultValue = 0 },
             ),
         ) { entry ->
             val args = entry.arguments
@@ -84,6 +86,7 @@ fun AppNavigation() {
                 mode = QuizMode.valueOf(args?.getString("mode") ?: QuizMode.ALL.name),
                 setId = args?.getLong("setId") ?: -1L,
                 shuffleQuestions = args?.getBoolean("shuffle") ?: true,
+                limit = args?.getInt("limit") ?: 0,
                 onBack = { nav.popBackStack() },
             )
         }
@@ -91,7 +94,7 @@ fun AppNavigation() {
         composable("wrong") {
             WrongBookScreen(
                 onBack = { nav.popBackStack() },
-                onPracticeAll = { shuffle -> nav.navigate(quizRoute(QuizMode.WRONG_ALL, -1L, shuffle)) },
+                onPracticeAll = { shuffle, limit -> nav.navigate(quizRoute(QuizMode.WRONG_ALL, -1L, shuffle, limit)) },
             )
         }
 

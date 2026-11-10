@@ -28,7 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +48,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.quizmaster.app.data.WRONG_BOOK_CLEAR_STREAK
 import com.quizmaster.app.data.WrongItem
 import com.quizmaster.app.ui.common.AppTopBar
+import com.quizmaster.app.ui.common.BatchCountPicker
+import com.quizmaster.app.ui.common.batchLimit
+import com.quizmaster.app.ui.common.effectiveCount
 import com.quizmaster.app.ui.common.ConfirmDialog
 import com.quizmaster.app.ui.common.TagLabel
 import com.quizmaster.app.ui.common.TypeTag
@@ -58,12 +60,13 @@ import com.quizmaster.app.ui.theme.AnswerColors
 import kotlinx.coroutines.launch
 
 @Composable
-fun WrongBookScreen(onBack: () -> Unit, onPracticeAll: (shuffle: Boolean) -> Unit) {
+fun WrongBookScreen(onBack: () -> Unit, onPracticeAll: (shuffle: Boolean, limit: Int) -> Unit) {
     val repo = rememberRepository()
     val scope = rememberCoroutineScope()
     val flow = remember { repo.observeWrongItems() }
     val wrongItems by flow.collectAsStateWithLifecycle(initialValue = null)
     var shuffle by rememberSaveable { mutableStateOf(true) }
+    var batchCount by rememberSaveable { mutableStateOf(10) }
     var confirmClear by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -115,14 +118,21 @@ fun WrongBookScreen(onBack: () -> Unit, onPracticeAll: (shuffle: Boolean) -> Uni
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(12.dp))
-                        Button(onClick = { onPracticeAll(shuffle) }, modifier = Modifier.fillMaxWidth()) {
+                        BatchCountPicker(
+                            available = list.size,
+                            count = batchCount,
+                            onCountChange = { batchCount = it },
+                            shuffle = shuffle,
+                            onShuffleChange = { shuffle = it },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { onPracticeAll(shuffle, batchLimit(batchCount, list.size)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("練習全部錯題")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("題目順序也隨機", modifier = Modifier.weight(1f))
-                            Switch(checked = shuffle, onCheckedChange = { shuffle = it })
+                            Text("練習錯題（${effectiveCount(batchCount, list.size)} 題）")
                         }
                     }
                 }

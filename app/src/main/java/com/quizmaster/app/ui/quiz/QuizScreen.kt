@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -65,10 +66,11 @@ fun QuizScreen(
     mode: QuizMode,
     setId: Long,
     shuffleQuestions: Boolean,
+    limit: Int = 0,
     onBack: () -> Unit,
 ) {
     val repo = rememberRepository()
-    val vm: QuizViewModel = viewModel { QuizViewModel(repo, mode, setId, shuffleQuestions) }
+    val vm: QuizViewModel = viewModel { QuizViewModel(repo, mode, setId, shuffleQuestions, limit) }
     val state by vm.state.collectAsStateWithLifecycle()
     var confirmEnd by remember { mutableStateOf(false) }
 
@@ -104,7 +106,13 @@ fun QuizScreen(
             when {
                 state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.items.isEmpty() -> EmptyQuiz(onBack, Modifier.align(Alignment.Center))
-                state.finished -> ResultContent(state, onRetryWrong = vm::retryWrong, onRestart = vm::restart, onBack = onBack)
+                state.finished -> ResultContent(
+                    state,
+                    onNextBatch = vm::nextBatch,
+                    onRetryWrong = vm::retryWrong,
+                    onRestart = vm::restart,
+                    onBack = onBack,
+                )
                 else -> QuestionContent(state, onOptionClick = vm::onOptionClick)
             }
         }
@@ -312,6 +320,7 @@ private fun BottomActions(
 @Composable
 private fun ResultContent(
     state: QuizUiState,
+    onNextBatch: () -> Unit,
     onRetryWrong: () -> Unit,
     onRestart: () -> Unit,
     onBack: () -> Unit,
@@ -345,15 +354,47 @@ private fun ResultContent(
             "答對 ${state.correct} 題 / 已答 ${state.answered} 題（共 ${state.items.size} 題）",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (state.batchNumber > 0) {
+            Text(
+                "第 ${state.batchNumber} 批完成",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         Spacer(Modifier.height(24.dp))
+
+        // 分批模式：下一批
+        val remaining = state.nextBatchRemaining
+        val hasNextBatch = state.batchSize > 0 && remaining != null && remaining > 0
+        if (hasNextBatch) {
+            Button(onClick = onNextBatch, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Text("下一批（${minOf(state.batchSize, remaining!!)} 題，還剩 $remaining 題）")
+            }
+            Spacer(Modifier.height(8.dp))
+        } else if (state.batchSize > 0 && remaining == 0) {
+            Text(
+                "這個來源的題目都做完了",
+                color = AnswerColors.correctFg(),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
+
         if (wrong.isNotEmpty()) {
-            Button(onClick = onRetryWrong, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Text("重做答錯的 ${wrong.size} 題")
+            if (hasNextBatch) {
+                FilledTonalButton(onClick = onRetryWrong, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("先重做答錯的 ${wrong.size} 題")
+                }
+            } else {
+                Button(onClick = onRetryWrong, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("重做答錯的 ${wrong.size} 題")
+                }
             }
             Spacer(Modifier.height(8.dp))
         }
         OutlinedButton(onClick = onRestart, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-            Text("全部再做一次")
+            Text(if (state.batchSize > 0) "這批再做一次" else "全部再做一次")
         }
         Spacer(Modifier.height(8.dp))
         TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("返回") }

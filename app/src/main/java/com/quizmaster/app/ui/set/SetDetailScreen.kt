@@ -32,18 +32,21 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +65,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.quizmaster.app.data.Question
 import com.quizmaster.app.data.QuizMode
 import com.quizmaster.app.ui.common.AppTopBar
+import com.quizmaster.app.ui.common.BatchCountPicker
+import com.quizmaster.app.ui.common.batchLimit
+import com.quizmaster.app.ui.common.effectiveCount
 import com.quizmaster.app.ui.common.ConfirmDialog
 import com.quizmaster.app.ui.common.SetNameDialog
 import com.quizmaster.app.ui.common.TagLabel
@@ -74,13 +80,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private data class BatchSource(
+    val mode: QuizMode,
+    val label: String,
+    val count: Int,
+    val hint: String,
+    val emptyHint: String,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetDetailScreen(
     setId: Long,
     onBack: () -> Unit,
     onEditQuestion: (questionId: Long) -> Unit,
     onImport: () -> Unit,
-    onStartQuiz: (mode: QuizMode, shuffle: Boolean) -> Unit,
+    onStartQuiz: (mode: QuizMode, shuffle: Boolean, limit: Int) -> Unit,
 ) {
     val repo = rememberRepository()
     val scope = rememberCoroutineScope()
@@ -92,6 +107,9 @@ fun SetDetailScreen(
     val questions by questionsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var shuffle by rememberSaveable { mutableStateOf(true) }
+    var sourceName by rememberSaveable { mutableStateOf(QuizMode.UNDONE.name) }
+    var sourcePicked by rememberSaveable { mutableStateOf(false) }
+    var batchCount by rememberSaveable { mutableStateOf(10) }
     var menuOpen by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -119,6 +137,13 @@ fun SetDetailScreen(
     val undone = total - done
     val attempts = questions.sumOf { it.attemptCount }
     val corrects = questions.sumOf { it.correctCount }
+
+    // 全部都做過了：預設改成「錯過的」或「全部」
+    LaunchedEffect(total, undone, wrong) {
+        if (!sourcePicked && total > 0 && undone == 0) {
+            sourceName = if (wrong > 0) QuizMode.WRONG.name else QuizMode.ALL.name
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -200,39 +225,65 @@ fun SetDetailScreen(
             }
 
             item {
+                val sources = listOf(
+                    BatchSource(QuizMode.UNDONE, "全新", undone, "從沒做過的題目", "這個題庫的題目都做過了"),
+                    BatchSource(QuizMode.WRONG, "錯過的", wrong, "目前在錯題本中的題目", "目前沒有錯題"),
+                    BatchSource(QuizMode.ALL, "全部", total, "整個題庫的題目", "這個題庫還沒有題目"),
+                )
+                val current = sources.first { it.mode.name == sourceName }
+                val available = current.count
+
                 Card(colors = appCardColors(), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("開始練習", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("分批測驗", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "每次作答的選項順序都會隨機打亂",
+                            "選擇題目來源和題數，每次作答選項順序都會隨機打亂",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(12.dp))
+
+                        Text("題目來源", fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                            sources.forEachIndexed { i, src ->
+                                SegmentedButton(
+                                    selected = src.mode.name == sourceName,
+                                    onClick = { sourceName = src.mode.name; sourcePicked = true },
+                                    shape = SegmentedButtonDefaults.itemShape(i, sources.size),
+                                    icon = {},
+                                    label = { Text("${src.label} ${src.count}", maxLines = 1) },
+                                )
+                            }
+                        }
+                        Text(
+                            if (available > 0) "${current.hint}，共 $available 題" else current.emptyHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (available > 0) MaterialTheme.colorScheme.onSurfaceVariant else AnswerColors.wrongFg(),
+                            modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+                        )
+
+                        if (available > 0) {
+                            BatchCountPicker(
+                                available = available,
+                                count = batchCount,
+                                onCountChange = { batchCount = it },
+                                shuffle = shuffle,
+                                onShuffleChange = { shuffle = it },
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+
                         Button(
-                            onClick = { onStartQuiz(QuizMode.ALL, shuffle) },
-                            enabled = total > 0,
+                            onClick = { onStartQuiz(current.mode, shuffle, batchLimit(batchCount, available)) },
+                            enabled = available > 0,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("全部題目（$total）")
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(
-                                onClick = { onStartQuiz(QuizMode.UNDONE, shuffle) },
-                                enabled = undone > 0,
-                                modifier = Modifier.weight(1f),
-                            ) { Text("未做過（$undone）") }
-                            FilledTonalButton(
-                                onClick = { onStartQuiz(QuizMode.WRONG, shuffle) },
-                                enabled = wrong > 0,
-                                modifier = Modifier.weight(1f),
-                            ) { Text("錯題（$wrong）") }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("題目順序也隨機", modifier = Modifier.weight(1f))
-                            Switch(checked = shuffle, onCheckedChange = { shuffle = it })
+                            Text(
+                                if (available > 0) "開始測驗（${effectiveCount(batchCount, available)} 題）" else "開始測驗"
+                            )
                         }
                     }
                 }
