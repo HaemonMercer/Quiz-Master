@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -60,6 +61,8 @@ fun HomeScreen(
     onOpenSet: (Long) -> Unit,
     onWrongBook: () -> Unit,
     onWrongCollection: () -> Unit,
+    /** 從常錯題中隨機抽 [FREQUENT_QUIZ_SIZE] 題測驗 */
+    onFrequentQuiz: () -> Unit,
     onHistory: () -> Unit,
 ) {
     val repo = rememberRepository()
@@ -115,6 +118,11 @@ fun HomeScreen(
                 item {
                     WrongCollectionCard(count = collectionCount, frequent = frequentCount, onClick = onWrongCollection)
                 }
+                if (frequentCount > 0) {
+                    item {
+                        FrequentQuizCard(frequent = frequentCount, onStart = onFrequentQuiz)
+                    }
+                }
                 item {
                     Text(
                         "我的題庫",
@@ -165,6 +173,38 @@ private fun WrongBookCard(count: Int, onClick: () -> Unit) {
                 )
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+/** 首頁「常錯題測驗」每次抽幾題 */
+const val FREQUENT_QUIZ_SIZE = 10
+
+@Composable
+private fun FrequentQuizCard(frequent: Int, onStart: () -> Unit) {
+    val size = minOf(frequent, FREQUENT_QUIZ_SIZE)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = AnswerColors.wrongBg()),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.Shuffle,
+                contentDescription = null,
+                tint = AnswerColors.wrongFg(),
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("常錯題測驗", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "從 $frequent 題常錯題中隨機抽 $size 題",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onStart) { Text("開始") }
         }
     }
 }

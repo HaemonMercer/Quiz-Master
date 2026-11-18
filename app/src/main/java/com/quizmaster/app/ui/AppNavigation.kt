@@ -10,6 +10,7 @@ import com.quizmaster.app.data.QuizMode
 import com.quizmaster.app.ui.edit.EditQuestionScreen
 import com.quizmaster.app.ui.history.HistoryScreen
 import com.quizmaster.app.ui.history.SessionDetailScreen
+import com.quizmaster.app.ui.home.FREQUENT_QUIZ_SIZE
 import com.quizmaster.app.ui.home.HomeScreen
 import com.quizmaster.app.ui.importer.ImportScreen
 import com.quizmaster.app.ui.quiz.QuizScreen
@@ -32,6 +33,7 @@ fun AppNavigation() {
                 onOpenSet = { nav.navigate("set/$it") },
                 onWrongBook = { nav.navigate("wrong") },
                 onWrongCollection = { nav.navigate("collection") },
+                onFrequentQuiz = { nav.navigate(quizRoute(QuizMode.FREQUENT, -1L, true, FREQUENT_QUIZ_SIZE)) },
                 onHistory = { nav.navigate("history") },
             )
         }
