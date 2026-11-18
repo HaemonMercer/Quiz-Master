@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.History
@@ -58,12 +59,15 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     onOpenSet: (Long) -> Unit,
     onWrongBook: () -> Unit,
+    onWrongCollection: () -> Unit,
     onHistory: () -> Unit,
 ) {
     val repo = rememberRepository()
     val scope = rememberCoroutineScope()
     val flow = remember { repo.observeSetSummaries() }
     val sets by flow.collectAsStateWithLifecycle(initialValue = null)
+    val collectionFlow = remember { repo.observeWrongRecordCount() }
+    val collectionCount by collectionFlow.collectAsStateWithLifecycle(initialValue = 0)
     var showCreate by remember { mutableStateOf(false) }
 
     val totalWrong = sets?.sumOf { it.wrong } ?: 0
@@ -95,6 +99,8 @@ fun HomeScreen(
                 modifier = Modifier.padding(padding),
                 onCreate = { showCreate = true },
                 onLoadDemo = { scope.launch { onOpenSet(repo.loadDemoSet()) } },
+                collectionCount = collectionCount,
+                onWrongCollection = onWrongCollection,
             )
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -103,6 +109,9 @@ fun HomeScreen(
             ) {
                 item {
                     WrongBookCard(count = totalWrong, onClick = onWrongBook)
+                }
+                item {
+                    WrongCollectionCard(count = collectionCount, onClick = onWrongCollection)
                 }
                 item {
                     Text(
@@ -149,6 +158,33 @@ private fun WrongBookCard(count: Int, onClick: () -> Unit) {
                 Text("錯題本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
                     if (hasWrong) "共 $count 題待複習" else "目前沒有錯題，繼續保持！",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+private fun WrongCollectionCard(count: Int, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clip(CardDefaults.shape).clickable(onClick = onClick),
+        colors = appCardColors(),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.AutoMirrored.Filled.MenuBook,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("錯題集", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (count > 0) "已收錄 $count 題（只能手動刪除）" else "答錯的題目會永久收錄在這裡",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -206,7 +242,13 @@ private fun SetCard(set: SetSummary, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier, onCreate: () -> Unit, onLoadDemo: () -> Unit) {
+private fun EmptyState(
+    modifier: Modifier,
+    onCreate: () -> Unit,
+    onLoadDemo: () -> Unit,
+    collectionCount: Int,
+    onWrongCollection: () -> Unit,
+) {
     Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
@@ -227,6 +269,11 @@ private fun EmptyState(modifier: Modifier, onCreate: () -> Unit, onLoadDemo: () 
             Button(onClick = onCreate) { Text("新增題庫") }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onLoadDemo) { Text("載入示範題庫") }
+            // 題庫都刪光了，錯題集仍會保留，這裡留一個入口
+            if (collectionCount > 0) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onWrongCollection) { Text("查看錯題集（$collectionCount 題）") }
+            }
         }
     }
 }

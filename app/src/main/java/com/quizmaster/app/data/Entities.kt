@@ -134,3 +134,37 @@ data class AttemptWithQuestion(
 
 /** 連續答對幾次後自動移出錯題本 */
 const val WRONG_BOOK_CLEAR_STREAK = 2
+
+/**
+ * 錯題集：答錯時自動收錄，只能手動刪除。
+ * 保存題目的快照，所以之後連續答對、重設進度、甚至題目或題庫被刪掉，紀錄都還在。
+ * 每題一筆；同一題再答錯會累加次數並更新最後一次的選擇。
+ */
+@Entity(
+    tableName = "wrong_records",
+    foreignKeys = [
+        ForeignKey(
+            entity = Question::class,
+            parentColumns = ["id"],
+            childColumns = ["questionId"],
+            onDelete = ForeignKey.SET_NULL,
+        )
+    ],
+    indices = [Index(value = ["questionId"], unique = true)],
+)
+data class WrongRecord(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** 原題目；題目被刪除後變成 null，紀錄仍保留 */
+    val questionId: Long?,
+    val setName: String,
+    val text: String,
+    val options: List<String>,
+    val correct: List<Int>,
+    val multi: Boolean,
+    val explanation: String,
+    val wrongTimes: Int,
+    val firstWrongAt: Long,
+    val lastWrongAt: Long,
+    /** 最後一次答錯時選的選項（原始索引） */
+    val lastSelected: List<Int>,
+)

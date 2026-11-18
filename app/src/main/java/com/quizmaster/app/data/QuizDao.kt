@@ -129,4 +129,57 @@ interface QuizDao {
     @Transaction
     @Query("SELECT * FROM attempts WHERE sessionId = :sessionId ORDER BY answeredAt, id")
     fun observeAttempts(sessionId: Long): Flow<List<AttemptWithQuestion>>
+
+    // ── 錯題集（只能手動刪除） ──
+
+    @Query("SELECT * FROM wrong_records ORDER BY lastWrongAt DESC, id DESC")
+    fun observeWrongRecords(): Flow<List<WrongRecord>>
+
+    @Query("SELECT COUNT(*) FROM wrong_records")
+    fun observeWrongRecordCount(): Flow<Int>
+
+    @Query("SELECT * FROM wrong_records WHERE questionId = :questionId")
+    suspend fun getWrongRecordByQuestion(questionId: Long): WrongRecord?
+
+    @Insert
+    suspend fun insertWrongRecord(record: WrongRecord): Long
+
+    @Update
+    suspend fun updateWrongRecord(record: WrongRecord)
+
+    @Delete
+    suspend fun deleteWrongRecord(record: WrongRecord)
+
+    @Query("DELETE FROM wrong_records")
+    suspend fun clearWrongRecords()
+
+    /** 題目被編輯時，同步更新錯題集裡的快照 */
+    @Query(
+        """
+        UPDATE wrong_records SET text = :text, options = :options, correct = :correct,
+            multi = :multi, explanation = :explanation
+        WHERE questionId = :questionId
+        """
+    )
+    suspend fun refreshWrongRecordSnapshot(
+        questionId: Long,
+        text: String,
+        options: List<String>,
+        correct: List<Int>,
+        multi: Boolean,
+        explanation: String,
+    )
+
+    @Query("UPDATE wrong_records SET setName = :name WHERE questionId IN (SELECT id FROM questions WHERE setId = :setId)")
+    suspend fun renameWrongRecordSet(setId: Long, name: String)
+
+    /** 錯題集中原題目仍存在的題目（用來練習） */
+    @Query(
+        """
+        SELECT q.* FROM questions q
+        INNER JOIN wrong_records w ON w.questionId = q.id
+        ORDER BY w.lastWrongAt DESC
+        """
+    )
+    suspend fun getCollectionQuestions(): List<Question>
 }

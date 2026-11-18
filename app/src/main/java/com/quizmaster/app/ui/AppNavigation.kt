@@ -15,6 +15,7 @@ import com.quizmaster.app.ui.importer.ImportScreen
 import com.quizmaster.app.ui.quiz.QuizScreen
 import com.quizmaster.app.ui.set.SetDetailScreen
 import com.quizmaster.app.ui.wrong.WrongBookScreen
+import com.quizmaster.app.ui.wrong.WrongCollectionScreen
 
 /** limit = 每批題數，0 代表不限 */
 private fun quizRoute(mode: QuizMode, setId: Long, shuffle: Boolean, limit: Int) =
@@ -30,6 +31,7 @@ fun AppNavigation() {
             HomeScreen(
                 onOpenSet = { nav.navigate("set/$it") },
                 onWrongBook = { nav.navigate("wrong") },
+                onWrongCollection = { nav.navigate("collection") },
                 onHistory = { nav.navigate("history") },
             )
         }
@@ -95,6 +97,13 @@ fun AppNavigation() {
             WrongBookScreen(
                 onBack = { nav.popBackStack() },
                 onPracticeAll = { shuffle, limit -> nav.navigate(quizRoute(QuizMode.WRONG_ALL, -1L, shuffle, limit)) },
+            )
+        }
+
+        composable("collection") {
+            WrongCollectionScreen(
+                onBack = { nav.popBackStack() },
+                onPractice = { shuffle, limit -> nav.navigate(quizRoute(QuizMode.COLLECTION, -1L, shuffle, limit)) },
             )
         }
 

@@ -14,6 +14,7 @@ enum class QuizMode(val label: String) {
     WRONG("錯題練習"),
     WRONG_ALL("錯題本總複習"),
     RETRY("重做錯題"),
+    COLLECTION("錯題集練習"),
 }
 
 class QuizRepository(private val db: AppDatabase) {
@@ -27,6 +28,8 @@ class QuizRepository(private val db: AppDatabase) {
     fun observeSet(id: Long): Flow<QuestionSet?> = dao.observeSet(id)
     fun observeQuestions(setId: Long): Flow<List<Question>> = dao.observeQuestions(setId)
     fun observeWrongItems(): Flow<List<WrongItem>> = dao.observeWrongItems()
+    fun observeWrongRecords(): Flow<List<WrongRecord>> = dao.observeWrongRecords()
+    fun observeWrongRecordCount(): Flow<Int> = dao.observeWrongRecordCount()
     fun observeSessions(): Flow<List<QuizSession>> = dao.observeSessions()
     fun observeSession(id: Long): Flow<QuizSession?> = dao.observeSession(id)
     fun observeAttempts(sessionId: Long): Flow<List<AttemptWithQuestion>> = dao.observeAttempts(sessionId)
@@ -37,7 +40,10 @@ class QuizRepository(private val db: AppDatabase) {
     suspend fun createSet(name: String, description: String = ""): Long =
         dao.insertSet(QuestionSet(name = name.trim(), description = description.trim()))
 
-    suspend fun updateSet(set: QuestionSet) = dao.updateSet(set)
+    suspend fun updateSet(set: QuestionSet) = db.withTransaction {
+        dao.updateSet(set)
+        dao.renameWrongRecordSet(set.id, set.name)
+    }
     suspend fun deleteSet(set: QuestionSet) = dao.deleteSet(set)
     suspend fun resetSetProgress(setId: Long) = dao.resetSetStats(setId)
 
@@ -49,7 +55,13 @@ class QuizRepository(private val db: AppDatabase) {
             val pos = (dao.maxPosition(question.setId) ?: -1) + 1
             dao.insertQuestion(question.copy(position = pos))
         } else {
-            dao.updateQuestion(question)
+            db.withTransaction {
+                dao.updateQuestion(question)
+                dao.refreshWrongRecordSnapshot(
+                    question.id, question.text, question.options, question.correct,
+                    question.multi, question.explanation,
+                )
+            }
             question.id
         }
 
@@ -59,6 +71,10 @@ class QuizRepository(private val db: AppDatabase) {
         dao.setWrongBook(questionId, inWrongBook)
 
     suspend fun clearWrongBook() = dao.clearAllWrong()
+
+    // ── 錯題集：只有使用者手動操作才會刪除 ──
+    suspend fun deleteWrongRecord(record: WrongRecord) = dao.deleteWrongRecord(record)
+    suspend fun clearWrongRecords() = dao.clearWrongRecords()
 
     suspend fun importQuestions(setId: Long, parsed: List<ParsedQuestion>): Int =
         db.withTransaction {
@@ -91,6 +107,7 @@ class QuizRepository(private val db: AppDatabase) {
         QuizMode.UNDONE -> dao.getUndoneQuestions(setId)
         QuizMode.WRONG -> dao.getWrongQuestions(setId)
         QuizMode.WRONG_ALL -> dao.getAllWrongQuestions()
+        QuizMode.COLLECTION -> dao.getCollectionQuestions()
         QuizMode.RETRY -> emptyList() // 重做錯題由作答畫面直接帶入題目
     }
 
@@ -141,12 +158,51 @@ class QuizRepository(private val db: AppDatabase) {
                 )
             )
 
+            if (!ok) addToWrongCollection(q, selected, now)
+
             dao.getSession(sessionId)?.let { s ->
                 dao.updateSession(
                     s.copy(answered = s.answered + 1, correct = s.correct + if (ok) 1 else 0)
                 )
             }
             Unit
+        }
+    }
+
+    /** 答錯就收錄到錯題集；已收錄的題目累加次數、更新快照 */
+    private suspend fun addToWrongCollection(q: Question, selected: List<Int>, now: Long) {
+        val setName = dao.getSet(q.setId)?.name.orEmpty()
+        val existing = dao.getWrongRecordByQuestion(q.id)
+        if (existing == null) {
+            dao.insertWrongRecord(
+                WrongRecord(
+                    questionId = q.id,
+                    setName = setName,
+                    text = q.text,
+                    options = q.options,
+                    correct = q.correct,
+                    multi = q.multi,
+                    explanation = q.explanation,
+                    wrongTimes = 1,
+                    firstWrongAt = now,
+                    lastWrongAt = now,
+                    lastSelected = selected,
+                )
+            )
+        } else {
+            dao.updateWrongRecord(
+                existing.copy(
+                    setName = setName,
+                    text = q.text,
+                    options = q.options,
+                    correct = q.correct,
+                    multi = q.multi,
+                    explanation = q.explanation,
+                    wrongTimes = existing.wrongTimes + 1,
+                    lastWrongAt = now,
+                    lastSelected = selected,
+                )
+            )
         }
     }
 }
