@@ -105,7 +105,7 @@ fun AppNavigation() {
         composable("collection") {
             WrongCollectionScreen(
                 onBack = { nav.popBackStack() },
-                onPractice = { mode, shuffle, limit -> nav.navigate(quizRoute(mode, -1L, shuffle, limit)) },
+                onPractice = { mode, setId, shuffle, limit -> nav.navigate(quizRoute(mode, setId, shuffle, limit)) },
             )
         }
 

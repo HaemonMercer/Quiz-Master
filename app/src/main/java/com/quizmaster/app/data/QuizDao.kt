@@ -150,6 +150,9 @@ interface QuizDao {
     @Delete
     suspend fun deleteWrongRecord(record: WrongRecord)
 
+    @Delete
+    suspend fun deleteWrongRecords(records: List<WrongRecord>)
+
     @Query("DELETE FROM wrong_records")
     suspend fun clearWrongRecords()
 
@@ -173,27 +176,37 @@ interface QuizDao {
     @Query("UPDATE wrong_records SET setName = :name WHERE questionId IN (SELECT id FROM questions WHERE setId = :setId)")
     suspend fun renameWrongRecordSet(setId: Long, name: String)
 
-    /** 錯題集中原題目仍存在的題目（用來練習） */
+    /** 錯題集中原題目仍存在的題目（用來練習）；setId <= 0 代表不分題庫 */
     @Query(
         """
         SELECT q.* FROM questions q
         INNER JOIN wrong_records w ON w.questionId = q.id
+        WHERE (:setId <= 0 OR q.setId = :setId)
         ORDER BY w.lastWrongAt DESC
         """
     )
-    suspend fun getCollectionQuestions(): List<Question>
+    suspend fun getCollectionQuestions(setId: Long): List<Question>
 
     @Query("SELECT COUNT(*) FROM wrong_records WHERE wrongTimes >= :minTimes")
     fun observeFrequentCount(minTimes: Int): Flow<Int>
 
-    /** 常錯題：錯越多次排越前面 */
+    @Query(
+        """
+        SELECT COUNT(*) FROM wrong_records w
+        INNER JOIN questions q ON q.id = w.questionId
+        WHERE q.setId = :setId AND w.wrongTimes >= :minTimes
+        """
+    )
+    fun observeFrequentCountInSet(setId: Long, minTimes: Int): Flow<Int>
+
+    /** 常錯題：錯越多次排越前面；setId <= 0 代表不分題庫 */
     @Query(
         """
         SELECT q.* FROM questions q
         INNER JOIN wrong_records w ON w.questionId = q.id
-        WHERE w.wrongTimes >= :minTimes
+        WHERE w.wrongTimes >= :minTimes AND (:setId <= 0 OR q.setId = :setId)
         ORDER BY w.wrongTimes DESC, w.lastWrongAt DESC
         """
     )
-    suspend fun getFrequentQuestions(minTimes: Int): List<Question>
+    suspend fun getFrequentQuestions(setId: Long, minTimes: Int): List<Question>
 }

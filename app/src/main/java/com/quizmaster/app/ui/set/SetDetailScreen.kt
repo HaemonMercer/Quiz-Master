@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -75,6 +76,7 @@ import com.quizmaster.app.ui.common.TypeTag
 import com.quizmaster.app.ui.common.appCardColors
 import com.quizmaster.app.ui.common.percent
 import com.quizmaster.app.ui.common.rememberRepository
+import com.quizmaster.app.ui.home.FREQUENT_QUIZ_SIZE
 import com.quizmaster.app.ui.theme.AnswerColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -105,6 +107,8 @@ fun SetDetailScreen(
     val questionsFlow = remember(setId) { repo.observeQuestions(setId) }
     val set by setFlow.collectAsStateWithLifecycle(initialValue = null)
     val questions by questionsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val frequentFlow = remember(setId) { repo.observeFrequentCountInSet(setId) }
+    val frequentInSet by frequentFlow.collectAsStateWithLifecycle(initialValue = 0)
 
     var shuffle by rememberSaveable { mutableStateOf(true) }
     var sourceName by rememberSaveable { mutableStateOf(QuizMode.UNDONE.name) }
@@ -284,6 +288,33 @@ fun SetDetailScreen(
                             Text(
                                 if (available > 0) "開始測驗（${effectiveCount(batchCount, available)} 題）" else "開始測驗"
                             )
+                        }
+                    }
+                }
+            }
+
+            if (frequentInSet > 0) {
+                item {
+                    val size = minOf(frequentInSet, FREQUENT_QUIZ_SIZE)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = AnswerColors.wrongBg()),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Shuffle, null, tint = AnswerColors.wrongFg(), modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("常錯題測驗", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "從這個題庫的 $frequentInSet 題常錯題中隨機抽 $size 題",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Button(onClick = { onStartQuiz(QuizMode.FREQUENT, true, FREQUENT_QUIZ_SIZE) }) {
+                                Text("開始")
+                            }
                         }
                     }
                 }

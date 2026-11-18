@@ -2,6 +2,8 @@ package com.quizmaster.app.ui.wrong
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,7 +78,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun WrongCollectionScreen(
     onBack: () -> Unit,
-    onPractice: (mode: QuizMode, shuffle: Boolean, limit: Int) -> Unit,
+    /** setId <= 0 代表不分題庫 */
+    onPractice: (mode: QuizMode, setId: Long, shuffle: Boolean, limit: Int) -> Unit,
 ) {
     val repo = rememberRepository()
     val scope = rememberCoroutineScope()
@@ -86,7 +90,12 @@ fun WrongCollectionScreen(
     var confirmClear by remember { mutableStateOf(false) }
     /** true = 只看常錯題（依答錯次數排序） */
     var frequentOnly by rememberSaveable { mutableStateOf(false) }
+    /** 目前選的題庫分組（[SetGroup.key]）；null = 全部題庫 */
+    var groupKey by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<WrongRecord?>(null) }
+
+    val groups = remember(records) { groupBySet(records.orEmpty()) }
+    val group = groups.firstOrNull { it.key == groupKey }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -126,13 +135,15 @@ fun WrongCollectionScreen(
             return@Scaffold
         }
 
-        val frequent = remember(list) {
-            list.filter { it.wrongTimes >= FREQUENT_WRONG_TIMES }
+        val inGroup = group?.records ?: list
+        val frequent = remember(inGroup) {
+            inGroup.filter { it.wrongTimes >= FREQUENT_WRONG_TIMES }
                 .sortedWith(compareByDescending<WrongRecord> { it.wrongTimes }.thenByDescending { it.lastWrongAt })
         }
-        val shown = if (frequentOnly) frequent else list
+        val shown = if (frequentOnly) frequent else inGroup
         val practicable = shown.count { it.questionId != null }
         val practiceMode = if (frequentOnly) QuizMode.FREQUENT else QuizMode.COLLECTION
+        val practiceSetId = group?.setId ?: -1L
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -152,6 +163,27 @@ fun WrongCollectionScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (groups.size > 1) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("題庫", fontWeight = FontWeight.SemiBold)
+                            Row(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = group == null,
+                                    onClick = { groupKey = null },
+                                    label = { Text("全部 ${list.size}") },
+                                )
+                                groups.forEach { g ->
+                                    FilterChip(
+                                        selected = g.key == group?.key,
+                                        onClick = { groupKey = g.key },
+                                        label = { Text("${g.name} ${g.records.size}", maxLines = 1) },
+                                    )
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(12.dp))
                         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                             SegmentedButton(
@@ -159,7 +191,7 @@ fun WrongCollectionScreen(
                                 onClick = { frequentOnly = false },
                                 shape = SegmentedButtonDefaults.itemShape(0, 2),
                                 icon = {},
-                                label = { Text("全部 ${list.size}", maxLines = 1) },
+                                label = { Text("全部 ${inGroup.size}", maxLines = 1) },
                             )
                             SegmentedButton(
                                 selected = frequentOnly,
@@ -190,7 +222,9 @@ fun WrongCollectionScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Button(
-                                onClick = { onPractice(practiceMode, shuffle, batchLimit(batchCount, practicable)) },
+                                onClick = {
+                                    onPractice(practiceMode, practiceSetId, shuffle, batchLimit(batchCount, practicable))
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
@@ -226,15 +260,36 @@ fun WrongCollectionScreen(
     }
 
     if (confirmClear) {
+        // 有選題庫時只清空該題庫的紀錄
+        val target = group
         ConfirmDialog(
-            title = "清空錯題集？",
-            message = "錯題集裡的所有紀錄都會被刪除，無法復原。（錯題本與作答紀錄不受影響）",
+            title = if (target == null) "清空錯題集？" else "清空「${target.name}」的錯題？",
+            message = if (target == null) {
+                "錯題集裡的所有紀錄都會被刪除，無法復原。（錯題本與作答紀錄不受影響）"
+            } else {
+                "這個題庫在錯題集裡的 ${target.records.size} 筆紀錄會被刪除，無法復原。其他題庫不受影響。"
+            },
             confirmText = "清空",
-            onConfirm = { scope.launch { repo.clearWrongRecords() } },
+            onConfirm = {
+                scope.launch {
+                    if (target == null) repo.clearWrongRecords() else repo.deleteWrongRecords(target.records)
+                }
+            },
             onDismiss = { confirmClear = false },
         )
     }
 }
+
+/** 錯題集裡同一個題庫的紀錄；題庫已刪除的紀錄仍會依原本的題庫分在一起 */
+private data class SetGroup(val key: String, val setId: Long?, val name: String, val records: List<WrongRecord>)
+
+/** 依題庫分組，保持「最近答錯」的先後順序（list 本來就依最近答錯排序） */
+private fun groupBySet(list: List<WrongRecord>): List<SetGroup> =
+    list.groupBy { r -> r.setId?.let { "id:$it" } ?: "name:${r.setName}" }
+        .map { (key, records) ->
+            val first = records.first()
+            SetGroup(key, first.setId, first.setName.ifBlank { "未分類" }, records)
+        }
 
 @Composable
 private fun RecordCard(record: WrongRecord, onDelete: () -> Unit) {

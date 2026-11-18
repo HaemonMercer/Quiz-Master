@@ -159,6 +159,8 @@ data class WrongRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** 原題目；題目被刪除後變成 null，紀錄仍保留 */
     val questionId: Long?,
+    /** 所屬題庫；刻意不設外鍵，題庫刪掉後仍可用來把紀錄分組 */
+    val setId: Long? = null,
     val setName: String,
     val text: String,
     val options: List<String>,

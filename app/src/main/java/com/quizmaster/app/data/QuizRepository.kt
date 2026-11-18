@@ -32,6 +32,8 @@ class QuizRepository(private val db: AppDatabase) {
     fun observeWrongRecords(): Flow<List<WrongRecord>> = dao.observeWrongRecords()
     fun observeWrongRecordCount(): Flow<Int> = dao.observeWrongRecordCount()
     fun observeFrequentCount(): Flow<Int> = dao.observeFrequentCount(FREQUENT_WRONG_TIMES)
+    fun observeFrequentCountInSet(setId: Long): Flow<Int> =
+        dao.observeFrequentCountInSet(setId, FREQUENT_WRONG_TIMES)
     fun observeSessions(): Flow<List<QuizSession>> = dao.observeSessions()
     fun observeSession(id: Long): Flow<QuizSession?> = dao.observeSession(id)
     fun observeAttempts(sessionId: Long): Flow<List<AttemptWithQuestion>> = dao.observeAttempts(sessionId)
@@ -76,6 +78,7 @@ class QuizRepository(private val db: AppDatabase) {
 
     // ── 錯題集：只有使用者手動操作才會刪除 ──
     suspend fun deleteWrongRecord(record: WrongRecord) = dao.deleteWrongRecord(record)
+    suspend fun deleteWrongRecords(records: List<WrongRecord>) = dao.deleteWrongRecords(records)
     suspend fun clearWrongRecords() = dao.clearWrongRecords()
 
     suspend fun importQuestions(setId: Long, parsed: List<ParsedQuestion>): Int =
@@ -109,8 +112,8 @@ class QuizRepository(private val db: AppDatabase) {
         QuizMode.UNDONE -> dao.getUndoneQuestions(setId)
         QuizMode.WRONG -> dao.getWrongQuestions(setId)
         QuizMode.WRONG_ALL -> dao.getAllWrongQuestions()
-        QuizMode.COLLECTION -> dao.getCollectionQuestions()
-        QuizMode.FREQUENT -> dao.getFrequentQuestions(FREQUENT_WRONG_TIMES)
+        QuizMode.COLLECTION -> dao.getCollectionQuestions(setId)
+        QuizMode.FREQUENT -> dao.getFrequentQuestions(setId, FREQUENT_WRONG_TIMES)
         QuizMode.RETRY -> emptyList() // 重做錯題由作答畫面直接帶入題目
     }
 
@@ -180,6 +183,7 @@ class QuizRepository(private val db: AppDatabase) {
             dao.insertWrongRecord(
                 WrongRecord(
                     questionId = q.id,
+                    setId = q.setId,
                     setName = setName,
                     text = q.text,
                     options = q.options,
@@ -195,6 +199,7 @@ class QuizRepository(private val db: AppDatabase) {
         } else {
             dao.updateWrongRecord(
                 existing.copy(
+                    setId = q.setId,
                     setName = setName,
                     text = q.text,
                     options = q.options,

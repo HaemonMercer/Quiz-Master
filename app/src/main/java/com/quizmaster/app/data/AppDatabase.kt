@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [QuestionSet::class, Question::class, QuizSession::class, Attempt::class, WrongRecord::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -62,13 +62,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v3：錯題集記下所屬題庫，才能分題庫查看與練習 */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `wrong_records` ADD COLUMN `setId` INTEGER")
+                db.execSQL(
+                    """
+                    UPDATE wrong_records
+                    SET setId = (SELECT q.setId FROM questions q WHERE q.id = wrong_records.questionId)
+                    WHERE questionId IS NOT NULL
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "quiz.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }
