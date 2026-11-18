@@ -27,10 +27,14 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +52,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.quizmaster.app.data.FREQUENT_WRONG_TIMES
+import com.quizmaster.app.data.QuizMode
 import com.quizmaster.app.data.WrongRecord
 import com.quizmaster.app.ui.common.AppTopBar
 import com.quizmaster.app.ui.common.BatchCountPicker
@@ -65,8 +71,12 @@ import kotlinx.coroutines.launch
 /**
  * 錯題集：答錯過的題目都會留在這裡，不會因為答對或重設進度而消失，只能手動刪除。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WrongCollectionScreen(onBack: () -> Unit, onPractice: (shuffle: Boolean, limit: Int) -> Unit) {
+fun WrongCollectionScreen(
+    onBack: () -> Unit,
+    onPractice: (mode: QuizMode, shuffle: Boolean, limit: Int) -> Unit,
+) {
     val repo = rememberRepository()
     val scope = rememberCoroutineScope()
     val flow = remember { repo.observeWrongRecords() }
@@ -74,6 +84,8 @@ fun WrongCollectionScreen(onBack: () -> Unit, onPractice: (shuffle: Boolean, lim
     var shuffle by rememberSaveable { mutableStateOf(true) }
     var batchCount by rememberSaveable { mutableStateOf(10) }
     var confirmClear by remember { mutableStateOf(false) }
+    /** true = 只看常錯題（依答錯次數排序） */
+    var frequentOnly by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<WrongRecord?>(null) }
 
     Scaffold(
@@ -114,7 +126,13 @@ fun WrongCollectionScreen(onBack: () -> Unit, onPractice: (shuffle: Boolean, lim
             return@Scaffold
         }
 
-        val practicable = list.count { it.questionId != null }
+        val frequent = remember(list) {
+            list.filter { it.wrongTimes >= FREQUENT_WRONG_TIMES }
+                .sortedWith(compareByDescending<WrongRecord> { it.wrongTimes }.thenByDescending { it.lastWrongAt })
+        }
+        val shown = if (frequentOnly) frequent else list
+        val practicable = shown.count { it.questionId != null }
+        val practiceMode = if (frequentOnly) QuizMode.FREQUENT else QuizMode.COLLECTION
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -134,6 +152,33 @@ fun WrongCollectionScreen(onBack: () -> Unit, onPractice: (shuffle: Boolean, lim
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Spacer(Modifier.height(12.dp))
+                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                            SegmentedButton(
+                                selected = !frequentOnly,
+                                onClick = { frequentOnly = false },
+                                shape = SegmentedButtonDefaults.itemShape(0, 2),
+                                icon = {},
+                                label = { Text("全部 ${list.size}", maxLines = 1) },
+                            )
+                            SegmentedButton(
+                                selected = frequentOnly,
+                                onClick = { frequentOnly = true },
+                                shape = SegmentedButtonDefaults.itemShape(1, 2),
+                                icon = {},
+                                label = { Text("常錯 ${frequent.size}", maxLines = 1) },
+                            )
+                        }
+                        Text(
+                            when {
+                                !frequentOnly -> "依最近答錯排序"
+                                frequent.isEmpty() -> "目前沒有答錯 $FREQUENT_WRONG_TIMES 次以上的題目"
+                                else -> "答錯 $FREQUENT_WRONG_TIMES 次以上的題目，錯越多次排越前面"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
                         if (practicable > 0) {
                             Spacer(Modifier.height(12.dp))
                             BatchCountPicker(
@@ -145,12 +190,13 @@ fun WrongCollectionScreen(onBack: () -> Unit, onPractice: (shuffle: Boolean, lim
                             )
                             Spacer(Modifier.height(8.dp))
                             Button(
-                                onClick = { onPractice(shuffle, batchLimit(batchCount, practicable)) },
+                                onClick = { onPractice(practiceMode, shuffle, batchLimit(batchCount, practicable)) },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("練習錯題集（${effectiveCount(batchCount, practicable)} 題）")
+                                val label = if (frequentOnly) "練習常錯題" else "練習錯題集"
+                                Text("$label（${effectiveCount(batchCount, practicable)} 題）")
                             }
                         }
                     }
@@ -163,7 +209,7 @@ fun WrongCollectionScreen(onBack: () -> Unit, onPractice: (shuffle: Boolean, lim
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            items(list, key = { it.id }) { record ->
+            items(shown, key = { it.id }) { record ->
                 RecordCard(record, onDelete = { pendingDelete = record })
             }
         }
@@ -210,6 +256,9 @@ private fun RecordCard(record: WrongRecord, onDelete: () -> Unit) {
                         MaterialTheme.colorScheme.secondaryContainer,
                         MaterialTheme.colorScheme.onSecondaryContainer,
                     )
+                }
+                if (record.wrongTimes >= FREQUENT_WRONG_TIMES) {
+                    TagLabel("常錯", AnswerColors.wrongBg(), AnswerColors.wrongFg())
                 }
                 if (record.questionId == null) {
                     TagLabel(

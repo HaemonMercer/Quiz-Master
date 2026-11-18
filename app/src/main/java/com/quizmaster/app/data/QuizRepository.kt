@@ -15,6 +15,7 @@ enum class QuizMode(val label: String) {
     WRONG_ALL("錯題本總複習"),
     RETRY("重做錯題"),
     COLLECTION("錯題集練習"),
+    FREQUENT("常錯題練習"),
 }
 
 class QuizRepository(private val db: AppDatabase) {
@@ -30,6 +31,7 @@ class QuizRepository(private val db: AppDatabase) {
     fun observeWrongItems(): Flow<List<WrongItem>> = dao.observeWrongItems()
     fun observeWrongRecords(): Flow<List<WrongRecord>> = dao.observeWrongRecords()
     fun observeWrongRecordCount(): Flow<Int> = dao.observeWrongRecordCount()
+    fun observeFrequentCount(): Flow<Int> = dao.observeFrequentCount(FREQUENT_WRONG_TIMES)
     fun observeSessions(): Flow<List<QuizSession>> = dao.observeSessions()
     fun observeSession(id: Long): Flow<QuizSession?> = dao.observeSession(id)
     fun observeAttempts(sessionId: Long): Flow<List<AttemptWithQuestion>> = dao.observeAttempts(sessionId)
@@ -108,6 +110,7 @@ class QuizRepository(private val db: AppDatabase) {
         QuizMode.WRONG -> dao.getWrongQuestions(setId)
         QuizMode.WRONG_ALL -> dao.getAllWrongQuestions()
         QuizMode.COLLECTION -> dao.getCollectionQuestions()
+        QuizMode.FREQUENT -> dao.getFrequentQuestions(FREQUENT_WRONG_TIMES)
         QuizMode.RETRY -> emptyList() // 重做錯題由作答畫面直接帶入題目
     }
 

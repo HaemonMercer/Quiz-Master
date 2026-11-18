@@ -68,6 +68,8 @@ fun HomeScreen(
     val sets by flow.collectAsStateWithLifecycle(initialValue = null)
     val collectionFlow = remember { repo.observeWrongRecordCount() }
     val collectionCount by collectionFlow.collectAsStateWithLifecycle(initialValue = 0)
+    val frequentFlow = remember { repo.observeFrequentCount() }
+    val frequentCount by frequentFlow.collectAsStateWithLifecycle(initialValue = 0)
     var showCreate by remember { mutableStateOf(false) }
 
     val totalWrong = sets?.sumOf { it.wrong } ?: 0
@@ -111,7 +113,7 @@ fun HomeScreen(
                     WrongBookCard(count = totalWrong, onClick = onWrongBook)
                 }
                 item {
-                    WrongCollectionCard(count = collectionCount, onClick = onWrongCollection)
+                    WrongCollectionCard(count = collectionCount, frequent = frequentCount, onClick = onWrongCollection)
                 }
                 item {
                     Text(
@@ -168,7 +170,7 @@ private fun WrongBookCard(count: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WrongCollectionCard(count: Int, onClick: () -> Unit) {
+private fun WrongCollectionCard(count: Int, frequent: Int, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clip(CardDefaults.shape).clickable(onClick = onClick),
         colors = appCardColors(),
@@ -184,7 +186,11 @@ private fun WrongCollectionCard(count: Int, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text("錯題集", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (count > 0) "已收錄 $count 題（只能手動刪除）" else "答錯的題目會永久收錄在這裡",
+                    when {
+                        count == 0 -> "答錯的題目會永久收錄在這裡"
+                        frequent > 0 -> "已收錄 $count 題，其中常錯 $frequent 題"
+                        else -> "已收錄 $count 題（只能手動刪除）"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

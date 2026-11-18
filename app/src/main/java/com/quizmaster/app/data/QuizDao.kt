@@ -182,4 +182,18 @@ interface QuizDao {
         """
     )
     suspend fun getCollectionQuestions(): List<Question>
+
+    @Query("SELECT COUNT(*) FROM wrong_records WHERE wrongTimes >= :minTimes")
+    fun observeFrequentCount(minTimes: Int): Flow<Int>
+
+    /** 常錯題：錯越多次排越前面 */
+    @Query(
+        """
+        SELECT q.* FROM questions q
+        INNER JOIN wrong_records w ON w.questionId = q.id
+        WHERE w.wrongTimes >= :minTimes
+        ORDER BY w.wrongTimes DESC, w.lastWrongAt DESC
+        """
+    )
+    suspend fun getFrequentQuestions(minTimes: Int): List<Question>
 }
