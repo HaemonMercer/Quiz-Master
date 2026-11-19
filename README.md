@@ -58,7 +58,9 @@ B. H2O
 3. 完成後點進該次執行，在下方 Artifacts 下載 `QuizMaster-apk`，解壓後把 APK 傳到手機安裝
    （手機需允許「安裝未知來源的應用程式」）
 
-> release 版目前用 debug 金鑰簽名，方便自己安裝。若要上架 Google Play，請在 `app/build.gradle.kts` 換成自己的簽名金鑰。
+> APK 用 repo 裡固定的 `app/quizmaster.keystore` 簽名，所以新版可以直接覆蓋安裝、保留資料。
+> 從 1.0 升到 1.1 時因為換了金鑰，需要先解除安裝舊版一次（之後就不用了）。
+> 這把金鑰是公開的，只適合自己安裝；若要上架 Google Play，請在 `app/build.gradle.kts` 換成私密的簽名金鑰。
 
 ## 專案結構
 
